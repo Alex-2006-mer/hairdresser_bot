@@ -103,31 +103,60 @@ def is_manual_day_off(d: date) -> bool:
     cur.execute("SELECT 1 FROM day_offs WHERE date=?", (d.isoformat(),))
     return cur.fetchone() is not None
 
+
+messages = {}
+
+def send_clean_message(bot, chat_id, text, reply_markup=None):
+    # Удаляем предыдущие сообщения бота
+    if chat_id in messages:
+        for msg_id in messages[chat_id]:
+            try:
+                bot.delete_message(chat_id, msg_id)
+            except:
+                pass
+
+    # Отправляем новое сообщение
+    sent = bot.send_message(chat_id, text, reply_markup=reply_markup)
+    messages[chat_id] = [sent.message_id]
+
+
+
+# ----------------- Время по пол часа -----------------------
 def available_slots(day: date) -> list[str]:
-    # Простая логика — рабочие часы: 9:00 - 18:00 каждый час (9..18 inclusive)
-    slots = [f"{h:02d}:00" for h in range(9, 19)]
-    cur.execute("SELECT booking_time FROM bookings WHERE booking_date=? AND status='booked'", (day.isoformat(),))
+    # Генерация слотов каждые 30 минут с 9:00 до 18:00
+    slots = []
+    start = datetime.combine(day, datetime.min.time()).replace(hour=9, minute=0)
+    end = datetime.combine(day, datetime.min.time()).replace(hour=18, minute=0)
+
+    cur_time = start
+    while cur_time <= end:
+        slots.append(cur_time.strftime("%H:%M"))
+        cur_time += timedelta(minutes=30)
+
+    # Получить занятые слоты
+    cur.execute(
+        "SELECT booking_time FROM bookings WHERE booking_date=? AND status='booked'",
+        (day.isoformat(),)
+    )
     booked = {row['booking_time'] for row in cur.fetchall()}
-    # Применять cutoff: если day == today, убрать слоты которые ближе, чем BOOKING_CUTOFF_HOURS
+
+    # Применение cutoff: нельзя записываться раньше чем через BOOKING_CUTOFF_HOURS сегодня
     if day == date.today():
         now = datetime.now()
         cutoff_dt = now + timedelta(hours=BOOKING_CUTOFF_HOURS)
-        allowed = []
-        for s in slots:
-            hh, mm = map(int, s.split(":"))
-            slot_dt = datetime.combine(day, datetime.min.time()).replace(hour=hh, minute=mm)
-            if slot_dt >= cutoff_dt:
-                allowed.append(s)
-        slots = allowed
+        slots = [s for s in slots if datetime.combine(day, datetime.strptime(s, "%H:%M").time()) >= cutoff_dt]
+
+    # Убираем занятые
     return [s for s in slots if s not in booked]
 
+# ------------- Создание кнопки 7 дней недели ---------------------------------
 def date_keyboard(days_ahead: int = DATE_PICK_DAYS_AHEAD, prefix: str = "select_date:") -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup(row_width=3)
     for i in range(days_ahead):
         d = date.today() + timedelta(days=i)
         kb.add(types.InlineKeyboardButton(text=d.strftime("%d.%m.%Y"), callback_data=f"{prefix}{d.isoformat()}"))
     return kb
-
+# --------------
 def time_keyboard(slots: list[str], prefix: str = "book:") -> types.InlineKeyboardMarkup:
     kb = types.InlineKeyboardMarkup(row_width=3)
     for s in slots:
@@ -163,6 +192,8 @@ def cmd_book(m: types.Message):
     ensure_client(m.from_user)
     user_states[m.chat.id] = {"step": "select_date"}
     bot.send_message(m.chat.id, "Выберите дату для записи:", reply_markup=date_keyboard())
+    # send_clean_message(bot,m.chat.id,"Выберите дату для записи:",reply_markup=date_keyboard())
+
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("select_date:"))
 def cb_select_date(c: types.CallbackQuery):
@@ -292,7 +323,7 @@ def show_main_menu(chat_id: int, user_id: int):
     bot.send_message(chat_id, "📋 Главное меню:", reply_markup=kb)
 
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("menu_"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("menu_book"))
 def cb_menu(c: types.CallbackQuery):
     action = c.data.split("_", 1)[1]
 
