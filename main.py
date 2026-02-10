@@ -1,9 +1,7 @@
 from __future__ import annotations
-import telebot
-from config import TOKEN
-import handlers.default_handlers.booking
-import handlers.default_handlers.admin
-import handlers.default_handlers.start
+import handlers.default_handlers.booking  # noqa: F401 (register handlers)
+import handlers.default_handlers.admin  # noqa: F401 (register handlers)
+import handlers.default_handlers.start  # noqa: F401 (register handlers)
 from background import reminder_and_cleanup_loop
 import threading
 from bot_in import bot
