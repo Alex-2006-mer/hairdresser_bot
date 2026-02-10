@@ -1,6 +1,17 @@
 from telebot import types
 from bot_in import bot
 from database import ensure_client
+from handlers.default_handlers.booking import cmd_book, show_main_menu
+from handlers.default_handlers.admin import start_admin_booking_flow_for_user
+from config.config import ADMINS
+
+
+def user_reply_keyboard(user_id: int) -> types.ReplyKeyboardMarkup:
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row(types.KeyboardButton("📅 Записаться"), types.KeyboardButton("📋 Меню"))
+    if user_id in ADMINS:
+        kb.row(types.KeyboardButton("⚙️ Админ меню"), types.KeyboardButton("➕ Добавить клиента"))
+    return kb
 
 @bot.message_handler(commands=["start"])
 def cmd_start(m: types.Message):
@@ -10,4 +21,24 @@ def cmd_start(m: types.Message):
                     "Доступные команды:\n"
                     "/book — забронировать время\n"
                     "/mybookings — мои записи\n"
-                    "/cancel — отменить запись\n")
+                    "/cancel — отменить запись\n\n"
+                    "Или используйте кнопки ниже 👇",
+                    reply_markup=user_reply_keyboard(m.from_user.id))
+
+
+@bot.message_handler(func=lambda m: m.text in {"📅 Записаться", "Записаться", "записаться", "записатся"})
+def kb_book(m: types.Message):
+    cmd_book(m)
+
+
+@bot.message_handler(func=lambda m: m.text in {"📋 Меню", "Меню", "меню", "⚙️ Админ меню", "админ меню", "Админ меню"})
+def kb_menu(m: types.Message):
+    show_main_menu(m.chat.id, m.from_user.id)
+
+
+@bot.message_handler(func=lambda m: m.text in {"➕ Добавить клиента", "Добавить клиента", "добавить клиента"})
+def kb_add_client(m: types.Message):
+    if m.from_user.id not in ADMINS:
+        bot.reply_to(m, "⛔ Нет доступа.")
+        return
+    start_admin_booking_flow_for_user(m.from_user.id)

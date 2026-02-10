@@ -200,16 +200,19 @@ def cmd_stats(m: types.Message):
 
 # ---------- Admin: manual booking flow (add offline client) ----------
 
+def start_admin_booking_flow_for_user(admin_id: int):
+    """Start admin add-client flow by admin user id (from message handlers)."""
+    user_states[admin_id] = {"step": "admin_select_date"}
+    bot.send_message(admin_id, "📅 Выберите дату для записи клиента:", reply_markup=date_keyboard(prefix="admin_select_date:"))
+
+
 def start_admin_booking_flow(c: types.CallbackQuery):
     """Start the admin flow for manually adding a client booking (offline client)."""
     if c.from_user.id not in ADMINS:
         bot.answer_callback_query(c.id, "⛔ Нет доступа.")
         return
     admin_id = c.from_user.id
-    # store state keyed by admin chat id
-    user_states[admin_id] = {"step": "admin_select_date"}
-    # send date keyboard but with admin-specific callback prefix
-    bot.send_message(admin_id, "📅 Выберите дату для записи клиента:", reply_markup=date_keyboard(prefix="admin_select_date:"))
+    start_admin_booking_flow_for_user(admin_id)
     bot.answer_callback_query(c.id, "Выберите дату.")
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith("admin_select_date:"))

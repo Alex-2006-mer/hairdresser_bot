@@ -87,7 +87,7 @@ def send_clean_message(bot, chat_id, text, reply_markup=None):
         for msg_id in messages[chat_id]:
             try:
                 bot.delete_message(chat_id, msg_id)
-            except:
+            except Exception:
                 pass
 
     # Отправляем новое сообщение
