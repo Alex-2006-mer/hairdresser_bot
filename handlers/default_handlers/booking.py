@@ -87,6 +87,14 @@ def cb_book(c: types.CallbackQuery):
     booking_id = cur.lastrowid
 
     bot.answer_callback_query(c.id, f"Вы забронировали {slot} {day.strftime('%d.%m.%Y')}.")
+    try:
+        bot.delete_message(c.message.chat.id, c.message.message_id)
+    except Exception:
+        try:
+            bot.edit_message_reply_markup(c.message.chat.id, c.message.message_id, reply_markup=None)
+        except Exception:
+            pass
+
     bot.send_message(user.id, f"✅ Ваша запись: {day.strftime('%d.%m.%Y')} в {slot}. (ID {booking_id})")
 
     # notify admins
@@ -121,7 +129,7 @@ def show_main_menu(chat_id: int, user_id: int):
     bot.send_message(chat_id, "📋 Главное меню:", reply_markup=kb)
 
 
-@bot.callback_query_handler(func=lambda c: c.data.startswith("menu_book"))
+@bot.callback_query_handler(func=lambda c: c.data.startswith("menu_"))
 def cb_menu(c: types.CallbackQuery):
     action = c.data.split("_", 1)[1]
 
