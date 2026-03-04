@@ -13,4 +13,4 @@ t.start()
 
 if __name__ == "__main__":
     print("Hair salon bot (with admin 'Add client' flow) is running...")
-    bot.infinity_polling(skip_pending=True, timeout=30, long_polling_timeout=30)
+    bot.infinity_polling(skip_pending=True, timeout=60, long_polling_timeout=60)

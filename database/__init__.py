@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime, date, timedelta
 from telebot import types
-from config import BOOKING_CUTOFF_HOURS,DATE_PICK_DAYS_AHEAD
+from config import BOOKING_CUTOFF_HOURS,DATE_PICK_DAYS_AHEAD,ADMINS
 
 DB_PATH = "hair_salon_bot.sqlite3"
 conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -17,6 +17,18 @@ CREATE TABLE IF NOT EXISTS clients (
     registered_at TEXT NOT NULL
 )
 """)
+#
+# cur.execute("""
+# CREATE TABLE IF NOT EXISTS appointments (
+#     id INTEGER PRIMARY KEY AUTOINCREMENT,
+#     client_user_id INTEGER NOT NULL,
+#     date TEXT NOT NULL,
+#     time TEXT NOT NULL,
+#     created_at TEXT
+# )
+# """)
+
+
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS bookings (
@@ -141,4 +153,4 @@ def time_keyboard(slots: list[str], prefix: str = "book:") -> types.InlineKeyboa
     return kb
 
 def fmt_booking_row(row: sqlite3.Row) -> str:
-    return f"{row['booking_date']} в {row['booking_time']} — {row['full_name']} (@{row['username'] or '—'}) (id:{row['id']})"
+    return f"{row['booking_date']} в {row['booking_time']} — {row['full_name']}"
