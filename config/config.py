@@ -14,5 +14,5 @@ REMINDER_CHECK_INTERVAL = int(os.getenv("REMINDER_CHECK_INTERVAL", "600"))  # к
 if not TOKEN:
     raise SystemExit("ERROR: TOKEN is not set.")
 if not ADMINS:
-    raise SystemExit("ERROR: ADMINS is not set. Put admin user_id(s) to .env ADMINS as comma separated list.")
+    raise SystemExit("ERROR: ADMINS is not set. Put admin user_id(s) to ..env ADMINS as comma separated list.")
 

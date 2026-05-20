@@ -10,17 +10,120 @@ def admin_menu(m: types.Message):
     if m.from_user.id not in ADMINS:
         bot.reply_to(m, "⛔ Нет доступа.")
         return
-    try:
-        k_1 = InlineKeyboardButton(text="📅 День выходной", callback_data="dayoff")
-        k_2 = InlineKeyboardButton(text="✅ Открыть день", callback_data="openday")
-        k_3 = InlineKeyboardButton(text="🗑 Удалить запись", callback_data="delbooking")
-        k_4 = InlineKeyboardButton(text="Клиенты", callback_data="clients")
 
-        keyboard_3 = InlineKeyboardMarkup()
-        keyboard_3.add(k_1, k_2, k_3, k_4)
-        return keyboard_3
-    except Exception:
+    k_1 = InlineKeyboardButton(text="📅 День выходной", callback_data="dayoff")
+    k_2 = InlineKeyboardButton(text="✅ Открыть день", callback_data="openday")
+    k_3 = InlineKeyboardButton(text="🗑 Удалить запись", callback_data="delbooking")
+    k_4 = InlineKeyboardButton(text="Клиенты", callback_data="clients")
+    k_5 = InlineKeyboardButton(text="📅 Записи", callback_data="show_bookings")  # ✅ новая кнопка
+
+    keyboard_3 = InlineKeyboardMarkup()
+    keyboard_3.add(k_1, k_2, k_3, k_4, k_5)
+
+    bot.send_message(m.chat.id, "⚙️ Меню администратора:", reply_markup=keyboard_3)  # ✅
+
+
+@bot.callback_query_handler(func=lambda c: c.data == "show_bookings")
+def cb_show_bookings(c: types.CallbackQuery):
+    if c.from_user.id not in ADMINS:
+        bot.answer_callback_query(c.id, "⛔ Нет доступа.")
         return
+
+    # показываем даты на которые есть записи + ближайшие 7 дней
+    from datetime import date, timedelta
+    kb = InlineKeyboardMarkup()
+
+    today = date.today()
+    for i in range(7):
+        d = today + timedelta(days=i)
+        # считаем записи на этот день
+        cur.execute(
+            "SELECT COUNT(*) FROM bookings WHERE booking_date=? AND status='booked'",
+            (d.isoformat(),)
+        )
+        count = cur.fetchone()[0]
+
+        label = d.strftime("%d.%m.%Y")
+        if i == 0:
+            label = f"Сегодня {label}"
+        elif i == 1:
+            label = f"Завтра {label}"
+
+        # показываем количество записей на кнопке
+        label += f" ({count} зап.)"
+
+        kb.add(InlineKeyboardButton(
+            text=label,
+            callback_data=f"admin_day:{d.isoformat()}"
+        ))
+
+    bot.edit_message_text(
+        "📅 Выберите день:",
+        c.message.chat.id,
+        c.message.message_id,
+        reply_markup=kb
+    )
+    bot.answer_callback_query(c.id)
+
+
+@bot.callback_query_handler(func=lambda c: c.data.startswith("admin_day:"))
+def cb_admin_day(c: types.CallbackQuery):
+    if c.from_user.id not in ADMINS:
+        bot.answer_callback_query(c.id, "⛔ Нет доступа.")
+        return
+
+    from datetime import datetime, date
+    selected = c.data.split(":")[1]
+    day = date.fromisoformat(selected)
+
+    # получаем все занятые слоты
+    cur.execute("""
+        SELECT b.booking_time, c.full_name
+        FROM bookings b
+        JOIN clients c ON b.client_id = c.user_id
+        WHERE b.booking_date = ? AND b.status = 'booked'
+        ORDER BY b.booking_time
+    """, (selected,))
+    booked_rows = cur.fetchall()
+    booked_dict = {row[0]: row[1] for row in booked_rows}
+
+    # генерируем все слоты с 9:00 до 18:00
+    from datetime import timedelta
+    all_slots = []
+    start = datetime.combine(day, datetime.min.time()).replace(hour=9, minute=0)
+    end = datetime.combine(day, datetime.min.time()).replace(hour=18, minute=0)
+    cur_time = start
+    while cur_time <= end:
+        all_slots.append(cur_time.strftime("%H:%M"))
+        cur_time += timedelta(minutes=30)
+
+    # формируем текст
+    text = f"📅 Записи на {day.strftime('%d.%m.%Y')}:\n\n"
+
+    booked_count = 0
+    free_count = 0
+
+    for slot in all_slots:
+        if slot in booked_dict:
+            text += f"🔴 {slot} — {booked_dict[slot]}\n"
+            booked_count += 1
+        else:
+            text += f"🟢 {slot} — свободно\n"
+            free_count += 1
+
+    text += f"\n 🔴 Занято: {booked_count} | 🟢 Свободно: {free_count}"
+
+    # кнопка назад
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(text="◀️ Назад", callback_data="show_bookings"))
+
+    bot.edit_message_text(
+        text,
+        c.message.chat.id,
+        c.message.message_id,
+        reply_markup=kb
+    )
+    bot.answer_callback_query(c.id)
 
 @bot.message_handler(func=lambda m: m.text == "📅 Записи")
 def show_dates(m):
@@ -45,12 +148,6 @@ def show_dates(m):
             text=date_value,
             callback_data=f"admin_date_2:{date_value}"
         ))
-
-    # for d in dates:
-    #     kb.add(types.InlineKeyboardButton(
-    #         text=d["date"],
-    #         callback_data=f"admin_date_2:{d['date']}"
-    #     ))
 
     bot.send_message(m.chat.id, "Выберите дату:", reply_markup=kb)
 
@@ -217,7 +314,6 @@ def cmd_broadcast_active(m: types.Message):
             pass
     bot.reply_to(m, f"Отправлено {sent} сообщений.")
 
-# ---------- Admin: manual booking flow (add offline client) ----------
 
 def start_admin_booking_flow(c: types.CallbackQuery):
     """Start the admin flow for manually adding a client booking (offline client)."""

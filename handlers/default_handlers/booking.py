@@ -3,24 +3,28 @@ from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardBut
 from telebot.apihelper import answer_callback_query
 from telebot import types
 from bot_in import bot
-from database import cur,available_slots,fmt_booking_row,conn,ensure_client,user_states,date_keyboard,is_weekday_off,is_manual_day_off,time_keyboard
+from database import cur, available_slots, fmt_booking_row, conn, ensure_client, user_states, date_keyboard, \
+    is_weekday_off, is_manual_day_off, time_keyboard, send_clean_message
 from config.config import BOOKING_CUTOFF_HOURS, ADMINS
 from datetime import datetime,timedelta
-from handlers.default_handlers.admin import start_admin_booking_flow
+
 
 
 @bot.message_handler(commands=["book"])
 def cmd_book(m: types.Message):
     ensure_client(m.from_user)
     user_states[m.chat.id] = {"step": "select_date"}
-    bot.send_message(m.chat.id, "Выберите дату для записи:", reply_markup=date_keyboard())
-    # send_clean_message(bot,m.chat.id,"Выберите дату для записи:",reply_markup=date_keyboard())
+    # bot.send_message(m.chat.id, "Выберите дату для записи:", reply_markup=date_keyboard())
+    send_clean_message(bot,m.chat.id,"Выберите дату для записи:",reply_markup=date_keyboard())
 # --------------------------------------------------------------------------------------------------
 @bot.message_handler(func=lambda message: message.text == "Записатся")
 def cmd_book(m: types.Message):
     ensure_client(m.from_user)
     user_states[m.chat.id] = {"step": "select_date"}
-    bot.send_message(m.chat.id, "Выберите дату для записи:", reply_markup=date_keyboard())
+    bot.send_message(m.chat.id, "Выберите дату для записи:",
+                     reply_markup=types.ReplyKeyboardRemove()  # ✅ скрываем кнопки
+                     )
+    bot.send_message(m.chat.id, "ДД.ММ.ГГГГ", reply_markup=date_keyboard())
 
 @bot.message_handler(func=lambda message: message.text == "Меню")
 def cmd_menu(m: types.Message):
@@ -54,7 +58,7 @@ def cb_admin_select_date(c: types.CallbackQuery):
 
     state = user_states.get(chat_id)
     if not state or state.get("role") != "admin":
-        bot.answer_callback_query(c.id, "Ошибка состояния")
+        bot.answer_callback_query(c.id, "❗️ Ошибка состояния")
         return
 
     state["date"] = selected
@@ -62,17 +66,20 @@ def cb_admin_select_date(c: types.CallbackQuery):
     if is_weekday_off(day):
         bot.edit_message_text("❌ Салон не работает в этот день недели. Выберите другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     if is_manual_day_off(day):
         bot.edit_message_text("❌ В этот день салон отмечен как выходной. Выберите другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     slots = available_slots(day)
     if not slots:
-        bot.edit_message_text("На выбранный день нет свободных слотов. Попробуйте другой день.",
+        bot.edit_message_text("❗️ На выбранный день нет свободных слотов. Попробуйте другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
     day = datetime.fromisoformat(selected).date()
     slots = available_slots(day)
@@ -91,7 +98,7 @@ def cb_admin_select_time(c: types.CallbackQuery):
 
     state = user_states.get(chat_id)
     if not state or state.get("role") != "admin":
-        bot.answer_callback_query(c.id, "Ошибка состояния")
+        bot.answer_callback_query(c.id, "❗️ Ошибка состояния")
         return
 
     state["time"] = slot
@@ -111,19 +118,20 @@ def admin_enter_name(m: types.Message):
     state = user_states.get(chat_id)
 
     if not state or state.get("role") != "admin":
-        bot.send_message(chat_id, "Начните заново")
+        bot.send_message(chat_id, "❗️ Начните заново")
         return
 
     name = m.text.strip()
     if not name:
-        bot.send_message(chat_id, "Имя пустое, введите ещё раз:")
+        bot.send_message(chat_id, "❗️ Имя пустое, введите ещё раз:")
         return
 
     booking_date = state.get("date")
     booking_time = state.get("time")
 
     if not booking_date or not booking_time:
-        bot.send_message(chat_id, "Ошибка данных")
+        bot.send_message(chat_id, "❗️ Ошибка данных")
+
         return
 
     cur.execute("SELECT MIN(user_id) FROM clients WHERE user_id < 0")
@@ -159,17 +167,20 @@ def cb_select_date(c: types.CallbackQuery):
     if is_weekday_off(day):
         bot.edit_message_text("❌ Салон не работает в этот день недели. Выберите другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     if is_manual_day_off(day):
         bot.edit_message_text("❌ В этот день салон отмечен как выходной. Выберите другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     slots = available_slots(day)
     if not slots:
-        bot.edit_message_text("На выбранный день нет свободных слотов. Попробуйте другой день.",
+        bot.edit_message_text("❗️ На выбранный день нет свободных слотов. Попробуйте другой день.",
                               c.message.chat.id, c.message.message_id)
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     user_states[c.message.chat.id] = {"step": "select_time", "date": selected}
@@ -183,7 +194,7 @@ def cb_book(c: types.CallbackQuery):
     user = c.from_user
     state = user_states.get(c.message.chat.id)
     if not state or state.get("step") != "select_time":
-        bot.answer_callback_query(c.id, "Ошибка — начните /book заново.")
+        bot.answer_callback_query(c.id, "❗️ Ошибка — начните /book заново.")
         return
 
     booking_date = state["date"]
@@ -191,19 +202,22 @@ def cb_book(c: types.CallbackQuery):
 
     # double check week/day off
     if is_weekday_off(day) or is_manual_day_off(day):
-        bot.answer_callback_query(c.id, "На эту дату запись невозможна.")
+        bot.answer_callback_query(c.id, "❗️ На эту дату запись невозможна.")
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     # check slot still free
     cur.execute("SELECT 1 FROM bookings WHERE booking_date=? AND booking_time=? AND status='booked'", (booking_date, slot))
     if cur.fetchone():
-        bot.answer_callback_query(c.id, "Этот слот уже заняли.")
+        bot.answer_callback_query(c.id, "❗️ Этот слот уже заняли.")
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     # check cutoff: cannot book closer than BOOKING_CUTOFF_HOURS
     slot_dt = datetime.combine(day, datetime.min.time()).replace(hour=int(slot.split(":")[0]), minute=int(slot.split(":")[1]))
     if slot_dt < datetime.now() + timedelta(hours=BOOKING_CUTOFF_HOURS):
-        bot.answer_callback_query(c.id, f"Нельзя записаться ближе чем за {BOOKING_CUTOFF_HOURS} час(ов).")
+        bot.answer_callback_query(c.id, f"❗️ Нельзя записаться ближе чем за {BOOKING_CUTOFF_HOURS} час(ов).")
+        bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
         return
 
     # save
@@ -213,11 +227,13 @@ def cb_book(c: types.CallbackQuery):
     conn.commit()
     booking_id = cur.lastrowid
     bot.edit_message_text(
-        f"✅ Запись подтверждена!\n\n"
-        f"⏰ Ваша запись: {day.strftime('%d.%m.%Y')} в {slot}",
+        f"✅ ✅ ✅ ПОЗДРАВЛЯЕМ!\n\n"
+        f"📌 Запись подтверждена!\n\n"
+        f"⏰ Ждем вас в парикмахерской: {day.strftime('%d.%m.%Y')} в {slot}",
         c.message.chat.id,
-        c.message.message_id)
-
+        c.message.message_id
+    )
+    bot.send_message(c.message.chat.id, "Главное меню:", reply_markup=markup(c.message))
     # notify admins
     for admin_id in ADMINS:
         try:
@@ -243,9 +259,9 @@ def menu_user(message):
         k_2 = InlineKeyboardButton(text="✅ Открыть день", callback_data="openday")
         k_3 = InlineKeyboardButton(text="🗑 Удалить запись", callback_data="delbooking")
         k_4 = InlineKeyboardButton(text="Клиенты", callback_data="clients")
-
+        k_5 = InlineKeyboardButton(text="📅 Записи", callback_data="show_bookings")  # ✅ новая кнопка
         keyboard_3 = InlineKeyboardMarkup()
-        keyboard_3.add(k_1, k_2, k_3, k_4)
+        keyboard_3.add(k_1, k_2, k_3, k_4, k_5)
         return keyboard_3
 
 def markup(message):
