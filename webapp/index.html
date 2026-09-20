@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Запись к парикмахеру</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #000);
+      padding: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    h2 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--tg-theme-text-color, #000);
+    }
+
+    /* --- Даты --- */
+    .date-scroll {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      margin-bottom: 20px;
+    }
+    .date-scroll::-webkit-scrollbar { display: none; }
+
+    .date-chip {
+      min-width: 56px;
+      text-align: center;
+      padding: 8px 6px;
+      border-radius: 12px;
+      border: 1.5px solid #ddd;
+      cursor: pointer;
+      flex-shrink: 0;
+      background: var(--tg-theme-bg-color, #fff);
+      transition: all 0.15s;
+    }
+    .date-chip .num { font-size: 18px; font-weight: 600; }
+    .date-chip .wd  { font-size: 11px; color: #888; margin-top: 2px; }
+    .date-chip.active {
+      background: #2AABEE;
+      border-color: #2AABEE;
+      color: white;
+    }
+    .date-chip.active .wd { color: rgba(255,255,255,0.8); }
+
+    /* --- Слоты --- */
+    .slots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    .slot {
+      padding: 10px 4px;
+      text-align: center;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1.5px solid #ddd;
+      transition: all 0.15s;
+    }
+    .slot.free { background: #eaf8f0; color: #0a7a4a; border-color: #5DCAA5; }
+    .slot.busy { background: #f5f5f5; color: #bbb; cursor: not-allowed; }
+    .slot.selected { background: #2AABEE; color: white; border-color: #2AABEE; }
+
+    /* --- Кнопка --- */
+    .btn-book {
+      width: 100%;
+      padding: 14px;
+      background: #2AABEE;
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      display: none;
+    }
+    .btn-book:active { opacity: 0.85; }
+
+    /* --- Мои записи --- */
+    .booking-card {
+      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+    .booking-card .date { font-size: 15px; font-weight: 600; }
+    .booking-card .time { font-size: 13px; color: #888; margin-top: 4px; }
+    .booking-card .cancel-btn {
+      margin-top: 10px;
+      padding: 8px 16px;
+      background: #ff4444;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    /* --- Табы --- */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 20px;
+      border-bottom: 1.5px solid #eee;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px 0;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      color: #888;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1.5px;
+    }
+    .tab.active { color: #2AABEE; border-bottom-color: #2AABEE; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .empty { text-align: center; color: #aaa; font-size: 14px; margin-top: 40px; }
+
+    /* --- Лоадер --- */
+    .loader {
+      text-align: center;
+      color: #aaa;
+      font-size: 14px;
+      padding: 20px 0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('book')">Записаться</div>
+  <div class="tab" onclick="switchTab('my')">Мои записи</div>
+</div>
+
+<!-- Таб: Запись -->
+<div id="tab-book" class="tab-content active">
+  <h2>Выберите дату</h2>
+  <div class="date-scroll" id="dateScroll"></div>
+
+  <h2>Выберите время</h2>
+  <div class="slots-grid" id="slotsGrid">
+    <div class="loader">Загрузка...</div>
+  </div>
+
+  <button class="btn-book" id="btnBook" onclick="confirmBooking()">Записаться</button>
+</div>
+
+<!-- Таб: Мои записи -->
+<div id="tab-my" class="tab-content">
+  <h2>Мои записи</h2>
+  <div id="myBookings"><div class="loader">Загрузка...</div></div>
+</div>
+
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  tg.expand();
+
+  // Замени на свой адрес сервера (ngrok или локальный для теста)
+  const API = "https://affected-lustiness-freewill.ngrok-free.dev";
+
+  const DAYS_RU = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+  const MONTHS_RU = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+
+  let selectedDate = null;
+  let selectedTime = null;
+  const userId = tg.initDataUnsafe?.user?.id || 0;
+
+  // --- Генерируем даты на 7 дней ---
+  function buildDates() {
+    const scroll = document.getElementById("dateScroll");
+    scroll.innerHTML = "";
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const iso = d.toISOString().split("T")[0];
+      const chip = document.createElement("div");
+      chip.className = "date-chip" + (i === 0 ? " active" : "");
+      chip.innerHTML = `<div class="num">${d.getDate()} ${MONTHS_RU[d.getMonth()]}</div><div class="wd">${DAYS_RU[d.getDay()]}</div>`;
+      chip.onclick = () => selectDate(iso, chip);
+      scroll.appendChild(chip);
+      if (i === 0) { selectedDate = iso; loadSlots(iso); }
+    }
+  }
+
+  function selectDate(iso, el) {
+    selectedDate = iso;
+    selectedTime = null;
+    document.getElementById("btnBook").style.display = "none";
+    document.querySelectorAll(".date-chip").forEach(c => c.classList.remove("active"));
+    el.classList.add("active");
+    loadSlots(iso);
+  }
+
+  // --- Загружаем слоты ---
+  async function loadSlots(dateStr) {
+    const grid = document.getElementById("slotsGrid");
+    grid.innerHTML = '<div class="loader">Загрузка...</div>';
+    try {
+      const res = await fetch(`${API}/api/slots?date=${dateStr}`);
+      const data = await res.json();
+      grid.innerHTML = "";
+      if (!data.slots || data.slots.length === 0) {
+        grid.innerHTML = '<div class="loader">Нет доступных слотов</div>';
+        return;
+      }
+      data.slots.forEach(s => {
+        const el = document.createElement("div");
+        el.className = "slot " + (s.free ? "free" : "busy");
+        el.textContent = s.time;
+        if (s.free) el.onclick = () => selectSlot(s.time, el);
+        grid.appendChild(el);
+      });
+    } catch(e) {
+      grid.innerHTML = '<div class="loader">Ошибка загрузки</div>';
+    }
+  }
+
+  function selectSlot(time, el) {
+    selectedTime = time;
+    document.querySelectorAll(".slot").forEach(s => {
+      if (s.classList.contains("free")) s.classList.remove("selected");
+    });
+    el.classList.add("selected");
+    const btn = document.getElementById("btnBook");
+    btn.style.display = "block";
+    btn.textContent = `Записаться на ${time}`;
+  }
+
+  // --- Подтверждение записи ---
+  async function confirmBooking() {
+    if (!selectedDate || !selectedTime) return;
+    try {
+      const res = await fetch(`${API}/api/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          date: selectedDate,
+          time: selectedTime,
+          init_data: tg.initData
+        })
+      });
+      const data = await res.json();
+      if (data.ok) {
+        tg.showAlert(`✅ Вы записаны на ${selectedDate} в ${selectedTime}!`);
+        loadSlots(selectedDate);
+        document.getElementById("btnBook").style.display = "none";
+        selectedTime = null;
+      } else {
+        tg.showAlert("❌ " + (data.error || "Ошибка записи"));
+      }
+    } catch(e) {
+      tg.showAlert("❌ Ошибка соединения");
+    }
+  }
+
+  // --- Мои записи ---
+  async function loadMyBookings() {
+    const container = document.getElementById("myBookings");
+    container.innerHTML = '<div class="loader">Загрузка...</div>';
+    try {
+      const res = await fetch(`${API}/api/my_bookings?user_id=${userId}`);
+      const data = await res.json();
+      if (!data.bookings || data.bookings.length === 0) {
+        container.innerHTML = '<div class="empty">У вас нет активных записей</div>';
+        return;
+      }
+      container.innerHTML = "";
+      data.bookings.forEach(b => {
+        const card = document.createElement("div");
+        card.className = "booking-card";
+        card.innerHTML = `
+          <div class="date">📅 ${b.date}</div>
+          <div class="time">⏰ ${b.time}</div>
+          <button class="cancel-btn" onclick="cancelBooking(${b.id})">Отменить</button>
+        `;
+        container.appendChild(card);
+      });
+    } catch(e) {
+      container.innerHTML = '<div class="loader">Ошибка загрузки</div>';
+    }
+  }
+
+  async function cancelBooking(id) {
+    tg.showConfirm("Отменить запись?", async (ok) => {
+      if (!ok) return;
+      await fetch(`${API}/api/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: id, user_id: userId })
+      });
+      loadMyBookings();
+    });
+  }
+
+  // --- Табы ---
+  function switchTab(name) {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+    document.querySelector(`.tab[onclick="switchTab('${name}')"]`).classList.add("active");
+    document.getElementById(`tab-${name}`).classList.add("active");
+    if (name === "my") loadMyBookings();
+  }
+
+  buildDates();
+</script>
+</body>
+</html>
